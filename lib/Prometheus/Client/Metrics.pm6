@@ -93,6 +93,7 @@ role Base does Collector does Descriptor {
 
 class Counter is export(:collectors) does Base {
     has Real $.value = 0;
+    has Bool $.simple = False;
 
     method type(--> Str:D) { 'counter' }
 
@@ -102,8 +103,13 @@ class Counter is export(:collectors) does Base {
 
     method samples(--> Seq:D) {
         gather {
-            take ('_total', (), $!value);
-            take ('_created', (), $.created-posix);
+            if $.simple {
+                take ('', (), $!value);
+            }
+            else {
+                take ('_total', (), $!value);
+                take ('_created', (), $.created-posix);
+            }
         }
     }
 }
@@ -254,7 +260,7 @@ class Group is export(:collectors) does Collector does Descriptor {
 
     has MetricType $.type is required;
 
-    has Factory $.factory = Factory.new;
+    has Callable $.factory is required;
 
     has Lock::Async $!label-adding-lock = Lock::Async.new;
 
@@ -283,13 +289,7 @@ class Group is export(:collectors) does Collector does Descriptor {
             return $_;
         }
         $!label-adding-lock.protect: {
-            return %!metrics{ $labels-key } //= $.factory.build($.type,
-                :$.name,
-                :$.namespace,
-                :$.subsystem,
-                :$.unit,
-                :$.documentation,
-            );
+            return %!metrics{ $labels-key } //= $.factory()(); # no clue why I need ()()
         };
     }
 
@@ -325,56 +325,62 @@ class Group is export(:collectors) does Collector does Descriptor {
 
 class Factory {
     multi method build('gauge', :@label-names, *%args --> Collector:D) {
+        my $factory = sub { Gauge.new(|%args) };
         if @label-names {
-            Group.new(:@label-names, :type<gauge>, |%args);
+            Group.new(:@label-names, :type<gauge>, :$factory, |%args );
         }
         else {
-            Gauge.new(|%args);
+            $factory();
         }
     }
 
     multi method build('counter', :@label-names, *%args --> Collector:D) {
+        my $factory = sub { Counter.new(|%args) };
         if @label-names {
-            Group.new(:@label-names, :type<counter>, |%args);
+            Group.new(:@label-names, :type<counter>, :$factory, |%args);
         }
         else {
-            Counter.new(|%args);
+            $factory();
         }
     }
 
     multi method build('summary', :@label-names, *%args --> Collector:D) {
+        my $factory = sub { Summary.new(|%args) };
         if @label-names {
-            Group.new(:@label-names, :type<summary>, |%args);
+            Group.new(:@label-names, :type<summary>, :$factory, |%args);
         }
         else {
-            Summary.new(|%args);
+            $factory();
         }
     }
 
     multi method build('histogram', :@label-names, *%args --> Collector:D) {
+        my $factory = sub { Histogram.new(|%args) };
         if @label-names {
-            Group.new(:@label-names, :type<histogram>, |%args);
+            Group.new(:@label-names, :type<histogram>, :$factory, |%args);
         }
         else {
-            Histogram.new(|%args)
+            $factory();
         }
     }
 
     multi method build('info', :@label-names, *%args --> Collector:D) {
+        my $factory = sub { Info.new(|%args) };
         if @label-names {
-            Group.new(:@label-names, :type<info>, |%args);
+            Group.new(:@label-names, :type<info>, :$factory, |%args);
         }
         else {
-            Info.new(|%args)
+            $factory();
         }
     }
 
     multi method build('stateset', :@label-names, *%args --> Collector:D) {
+        my $factory = sub { StateSet.new(|%args) };
         if @label-names {
-            Group.new(:@label-names, :type<stateset>, |%args);
+            Group.new(:@label-names, :type<stateset>, :$factory, |%args);
         }
         else {
-            StateSet.new(|%args)
+            $factory();
         }
     }
 }
