@@ -288,9 +288,11 @@ class Group is export(:collectors) does Collector does Descriptor {
         with %!metrics{ $labels-key } {
             return $_;
         }
+        my $collector;
         $!label-adding-lock.protect: {
-            return %!metrics{ $labels-key } //= $.factory()(); # no clue why I need ()()
+            $collector = %!metrics{ $labels-key } //= $.factory()(); # one () for the accessor method and one () for the actual factory function
         };
+        return $collector;
     }
 
     method remove(*@label-values, *%labels --> Collector) {
